@@ -16,6 +16,7 @@ use std::process::{Command, Stdio};
 pub const SETTINGS_KEY: &str = "felagi";
 
 /// The Keychain item holding the token.
+#[cfg(target_os = "macos")]
 const KEYCHAIN_SERVICE: &str = "Elyra Workspace – Félagi";
 
 /// The statuses an issue moves through, in board order.

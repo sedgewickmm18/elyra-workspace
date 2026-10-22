@@ -386,6 +386,15 @@ impl BrowserView {
 
     /// Load `url`.
     pub fn open(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if !webview::available() {
+            // No in-app browser on this platform: the user's browser takes it.
+            cx.open_url(url);
+            self.state.url = url.to_string();
+            self.address
+                .update(cx, |address, cx| address.set_value(url, window, cx));
+            cx.notify();
+            return;
+        }
         if let Some(page) = self.page() {
             page.load(url);
             self.state.url = url.to_string();
@@ -768,7 +777,11 @@ impl Render for BrowserView {
             (_, None) => div()
                 .p_4()
                 .text_sm()
-                .child("The browser isn't available in this window.")
+                .child(if webview::available() {
+                    "The browser isn't available in this window."
+                } else {
+                    "The in-app browser needs macOS; addresses and servers here open in your web browser instead."
+                })
                 .into_any_element(),
             (None, _) => self.start_page(cx),
         };

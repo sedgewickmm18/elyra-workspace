@@ -13,27 +13,47 @@
 //! `ElyraWebView` is its own observer and delegate and forwards everything as a
 //! `WebEvent` on a channel that the browser drains on GPUI's main thread.
 
+#[cfg(target_os = "macos")]
+use async_channel::Sender;
+#[cfg(target_os = "macos")]
+use gpui_kit::{Bounds, Pixels, Window};
+
+#[cfg(target_os = "macos")]
 use std::cell::Cell;
+#[cfg(target_os = "macos")]
 use std::ffi::c_void;
+#[cfg(target_os = "macos")]
 use std::ptr::NonNull;
 
-use async_channel::Sender;
-use gpui_kit::{Bounds, Pixels, Window};
+#[cfg(target_os = "macos")]
 use objc2::rc::{Allocated, Retained};
+#[cfg(target_os = "macos")]
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject, Sel};
+#[cfg(target_os = "macos")]
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
+#[cfg(target_os = "macos")]
 use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSImage, NSResponder, NSView};
+#[cfg(target_os = "macos")]
 use objc2_foundation::{
     NSData, NSError, NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration,
     NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest,
 };
+#[cfg(target_os = "macos")]
 use objc2_web_kit::{
     WKContentWorld, WKNavigationAction, WKNavigationActionPolicy, WKNavigationDelegate,
     WKNavigationResponse, WKNavigationResponsePolicy, WKSnapshotConfiguration, WKUIDelegate,
     WKWebView, WKWebViewConfiguration, WKWindowFeatures,
 };
+#[cfg(target_os = "macos")]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+/// Whether this platform can host the in-app browser. When it can't, user
+/// opens go to the system browser and agent browser tools refuse.
+pub fn available() -> bool {
+    cfg!(target_os = "macos")
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub enum WebEvent {
     /// Some observed page property changed; re-read `WebView::state`.
     Changed,
@@ -47,6 +67,7 @@ pub enum WebEvent {
 }
 
 /// KVO key paths that change what the toolbar shows.
+#[cfg(target_os = "macos")]
 const OBSERVED_KEYS: [&str; 6] = [
     "title",
     "URL",
@@ -56,13 +77,16 @@ const OBSERVED_KEYS: [&str; 6] = [
     "canGoForward",
 ];
 
+#[cfg(target_os = "macos")]
 static KVO_CONTEXT: u8 = 0;
 
+#[cfg(target_os = "macos")]
 fn kvo_context() -> *mut c_void {
     &KVO_CONTEXT as *const u8 as *mut c_void
 }
 
 /// Addresses the web view shows itself; anything else belongs to another app.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn is_web_address(url: &str) -> bool {
     let scheme = url.split(':').next().unwrap_or("").to_ascii_lowercase();
     matches!(
@@ -101,6 +125,7 @@ pub fn is_local_address(url: &str) -> bool {
 
 /// Whether the user asked for this navigation (a click or a key press), as
 /// WebKit tracks it (`_isUserInitiated`, SPI), else whether it's a link click.
+#[cfg(target_os = "macos")]
 fn user_initiated(action: &WKNavigationAction) -> bool {
     let selector = sel!(_isUserInitiated);
     let responds: bool = unsafe { msg_send![action, respondsToSelector: selector] };
@@ -112,6 +137,7 @@ fn user_initiated(action: &WKNavigationAction) -> bool {
 
 /// Editing shortcuts for the page. GPUI handles key equivalents first; the
 /// ones it leaves alone reach the page through these selectors.
+#[cfg(target_os = "macos")]
 fn editing_selector(event: &NSEvent) -> Option<Sel> {
     let flags = event.modifierFlags();
     if !flags.contains(NSEventModifierFlags::Command)
@@ -135,10 +161,12 @@ fn editing_selector(event: &NSEvent) -> Option<Sel> {
     })
 }
 
+#[cfg(target_os = "macos")]
 pub struct Ivars {
     events: Sender<WebEvent>,
 }
 
+#[cfg(target_os = "macos")]
 define_class!(
     // SAFETY: WKWebView supports subclassing, and `ElyraWebView` doesn't implement Drop.
     #[unsafe(super(WKWebView, NSView, NSResponder, NSObject))]
@@ -272,6 +300,7 @@ define_class!(
     }
 );
 
+#[cfg(target_os = "macos")]
 impl ElyraWebView {
     /// ⌘C, ⌘V, ⌘X, ⌘A, ⌘Z and ⇧⌘Z for the page, when it has keyboard focus.
     fn perform_editing_shortcut(&self, event: &NSEvent) -> bool {
@@ -303,11 +332,13 @@ impl ElyraWebView {
 
 /// The window's native views: GPUI's Metal view and the content view that holds
 /// it and the web views.
+#[cfg(target_os = "macos")]
 pub struct NativeHost {
     content_view: Retained<NSView>,
     gpui_view: Retained<NSView>,
 }
 
+#[cfg(target_os = "macos")]
 impl NativeHost {
     pub fn new(window: &Window) -> Option<Self> {
         let RawWindowHandle::AppKit(handle) = HasWindowHandle::window_handle(window).ok()?.as_raw()
@@ -348,11 +379,13 @@ impl NativeHost {
 
 /// What agents read back from resources/agent-capture.js: the console and
 /// network it kept, and every file the page loaded.
+#[cfg(target_os = "macos")]
 const AGENT_READ: &str = "window.__elyraAgent ? JSON.stringify({console: window.__elyraAgent.console, network: window.__elyraAgent.network, resources: performance.getEntriesByType('resource').slice(-200).map(e => ({url: e.name, type: e.initiatorType, ms: Math.round(e.duration), bytes: e.transferSize, status: e.responseStatus || undefined}))}) : null";
 
 /// The configuration for the in-app browser: persistent website data (shared
 /// with nothing else), and the console and network watcher for agents, which
 /// only starts on pages served from this Mac.
+#[cfg(target_os = "macos")]
 pub fn configuration() -> Retained<WKWebViewConfiguration> {
     let mtm = MainThreadMarker::new().expect("main thread");
     unsafe {
@@ -374,11 +407,13 @@ pub fn configuration() -> Retained<WKWebViewConfiguration> {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub struct WebView {
     view: Retained<ElyraWebView>,
     last_frame: Cell<Option<Bounds<Pixels>>>,
 }
 
+#[cfg(target_os = "macos")]
 impl WebView {
     pub fn new(events: Sender<WebEvent>, configuration: &WKWebViewConfiguration) -> Self {
         let mtm = MainThreadMarker::new().expect("web views live on the main thread");
@@ -621,6 +656,7 @@ impl WebView {
     }
 }
 
+#[cfg(target_os = "macos")]
 impl Drop for WebView {
     fn drop(&mut self) {
         unsafe {
@@ -650,6 +686,7 @@ pub struct PageState {
 }
 
 /// Redraw `image` at 1x scale (points = pixels) and encode it as JPEG.
+#[cfg(target_os = "macos")]
 fn encode_jpeg(image: &NSImage, quality: f64) -> Option<Vec<u8>> {
     unsafe {
         let size: NSSize = msg_send![image, size];
@@ -703,6 +740,100 @@ fn encode_jpeg(image: &NSImage, quality: f64) -> Option<Vec<u8>> {
         Some(jpeg?.to_vec())
     }
 }
+
+/// The in-app browser on other platforms: the API of the WebKit bridge, but no
+/// web view behind it. `NativeHost::new` returns `None`, so `BrowserView`
+/// renders its empty state and every agent call answers `None`.
+#[cfg(not(target_os = "macos"))]
+mod stub {
+    use super::{PageState, WebEvent};
+    use async_channel::Sender;
+    use gpui_kit::{Bounds, Pixels, Window};
+
+    /// Placeholder for the macOS `WKWebViewConfiguration`.
+    pub struct Configuration;
+
+    /// There is nothing to configure without a web view.
+    pub fn configuration() -> Configuration {
+        Configuration
+    }
+
+    pub struct NativeHost;
+
+    impl NativeHost {
+        /// No native sibling views to find on this platform.
+        pub fn new(_window: &Window) -> Option<Self> {
+            None
+        }
+
+        pub fn focus_gpui(&self) {}
+    }
+
+    pub struct WebView;
+
+    impl WebView {
+        pub fn new(_events: Sender<WebEvent>, _configuration: &Configuration) -> Self {
+            Self
+        }
+
+        pub fn is_attached(&self) -> bool {
+            false
+        }
+
+        pub fn attach(&self, _host: &NativeHost) {}
+
+        pub fn detach(&self) {}
+
+        pub fn set_frame(&self, _host: &NativeHost, _bounds: Bounds<Pixels>) {}
+
+        pub fn focus(&self) {}
+
+        pub fn load(&self, _url: &str) {}
+
+        pub fn go_back(&self) {}
+
+        pub fn go_forward(&self) {}
+
+        pub fn reload(&self) {}
+
+        pub fn stop(&self) {}
+
+        pub fn state(&self) -> PageState {
+            PageState::default()
+        }
+
+        pub fn agent_look(&self, _call: &str, done: impl Fn(Option<String>) + 'static) {
+            done(None);
+        }
+
+        pub fn agent_act(&self, _call: &str, done: impl Fn(Option<String>) + 'static) {
+            done(None);
+        }
+
+        pub fn pick(&self, _call: &str, done: impl Fn(Option<String>) + 'static) {
+            done(None);
+        }
+
+        pub fn snapshot_area(
+            &self,
+            _area: (f64, f64, f64, f64),
+            done: impl Fn(Option<Vec<u8>>) + 'static,
+        ) {
+            done(None);
+        }
+
+        pub fn agent_captured(&self, done: impl Fn(Option<String>) + 'static) {
+            done(None);
+        }
+
+        pub fn agent_snapshot(&self, done: impl Fn(Option<Vec<u8>>) + 'static) {
+            done(None);
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub use stub::{NativeHost, WebView, configuration};
 
 #[cfg(test)]
 mod tests {

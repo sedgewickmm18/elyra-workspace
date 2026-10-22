@@ -210,6 +210,12 @@ pub async fn run(
         _ => {}
     }
     if tool == "browser_open" {
+        if !webview::available() {
+            return Err(
+                "The in-app browser is only available on macOS. Ask the user to open the page in their browser, or test it another way."
+                    .into(),
+            );
+        }
         let url = args["url"].as_str().unwrap_or("").trim().to_string();
         let url = crate::browser_view::normalize_address(&url).unwrap_or(url);
         if !webview::is_local_address(&url) {
@@ -785,6 +791,9 @@ fn js_target(target: &crate::journeys::Target) -> String {
 
 /// Open `url` in the thread's browser and wait until it has loaded.
 async fn open_and_settle(thread: ThreadId, url: &str, cx: &mut AsyncApp) -> Result<(), String> {
+    if !webview::available() {
+        return Err("the in-app browser is only available on macOS".into());
+    }
     if !webview::is_local_address(url) {
         return Err(format!("{url} isn't a local development page"));
     }
